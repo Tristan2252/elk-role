@@ -34,9 +34,9 @@
 
 - name: Create ELK repo config Ubuntu
   apt_repository:
-    repo: deb http://packages.elastic.co/elasticsearch/2.x/debian stable main
+    repo: deb https://artifacts.elastic.co/packages/7.x/apt stable main
     state: present
-    filename: elasticsearch-2.x.list
+    filename: elasticsearch-7.x.list
   when: ansible_distribution == 'Ubuntu'
 
 - name: Install elasticsearch
