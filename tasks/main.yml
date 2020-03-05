@@ -4,6 +4,7 @@
   apt_repository:
     repo: ppa:webupd8team/java
     state: present
+    update_cache: true
   when: ansible_distribution == 'Ubuntu'
 
 - name: Install java dependencies
