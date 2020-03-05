@@ -37,6 +37,7 @@
     repo: deb https://artifacts.elastic.co/packages/7.x/apt stable main
     state: present
     filename: elasticsearch-7.x.list
+    update_cache: true
   when: ansible_distribution == 'Ubuntu'
 
 - name: Install elasticsearch
