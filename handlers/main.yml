@@ -1,0 +1,31 @@
+---
+
+- name: Restart elasticsearch
+  service:
+    name: elasticsearch
+    state: restarted
+
+- name: Restart kibana
+  service:
+    name: kibana
+    state: restarted
+
+- name: Restart nginx
+  service:
+    name: nginx
+    state: restarted
+
+- name: Restart logstash
+  service:
+    name: logstash
+    state: restarted
+
+- name: restart heartbeat
+  service:
+    name: heartbeat-elastic
+    state: restarted
+
+- name: Restart firewalld
+  service:
+    name: firewalld
+    state: restarted

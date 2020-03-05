@@ -1,0 +1,185 @@
+---
+
+- name: Add Ubuntu Java Repo
+  apt_repository:
+    repo: ppa:webupd8team/java
+    state: present
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Install java dependencies
+  package:
+    name: "{{ java_pkgs[ansible_distribution] }}"
+    state: present
+
+- name: Import rpm key
+  rpm_key:
+    key: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    state: present
+  when: ansible_distribution == 'CentOS'
+
+- name: Create ELK repo config CentOS
+  copy:
+    src: elasticsearch.repo
+    dest: /etc/yum.repos.d/elasticsearch.repo
+    owner: root
+    group: root
+  when: ansible_distribution == 'CentOS'
+
+- name: Add an Apt signing key
+  apt_key:
+    url: https://packages.elastic.co/GPG-KEY-elasticsearch
+    state: present
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Create ELK repo config Ubuntu
+  apt_repository:
+    repo: deb http://packages.elastic.co/elasticsearch/2.x/debian stable main
+    state: present
+    filename: elasticsearch-2.x.list
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Install elasticsearch
+  package:
+    name: elasticsearch
+    state: present
+
+- name: Configuration elasticsearch
+  copy:
+    src: elasticsearch.yml
+    dest: /etc/elasticsearch/elasticsearch.yml
+    owner: root
+    group: elasticsearch
+    mode: 0660
+  notify: Restart elasticsearch
+
+- name: Enable elasticsearch
+  service:
+    name: elasticsearch
+    enabled: true
+
+- name: Install kibana
+  package:
+    name: kibana
+    state: present
+
+- name: Configure kibana
+  copy:
+    src: kibana.yml
+    dest: /etc/kibana/kibana.yml
+  notify: Restart kibana
+
+- name: Enable kibana
+  service:
+    name: kibana
+    state: started
+    enabled: true
+
+- name: Set kibana htpassword
+  copy:
+    content: "{{ kibana_pass }}"            # in vars file
+    dest: /etc/nginx/htpasswd.users
+  notify: Restart nginx
+
+- name: Install logstash
+  package:
+    name: logstash
+    state: present
+
+- name: Install logstash plugins
+  command: "/usr/share/logstash/bin/logstash-plugin install {{ item }}"
+  with_items:
+    - logstash-input-file
+    - logstash-filter-geoip
+    - logstash-filter-mutate
+    - logstash-input-beats
+  changed_when: false
+
+- name: Create logstash ssl dir
+  file:
+    path: /etc/logstash/ssl
+    state: directory
+
+- name: Create logstash ssl conf
+  template:
+    src: logstash_ssl.cnf
+    dest: /etc/logstash/ssl/logstash_ssl.cnf
+  register: logstash_ssl
+
+- name: Create logstash ssl cert
+  command: "openssl req -x509 -batch -nodes -days 3650 -newkey rsa:2048 -keyout /etc/logstash/ssl/logstash.key -out /etc/logstash/ssl/logstash.crt -config /etc/logstash/ssl/logstash_ssl.cnf"
+  args:
+    creates: /etc/logstash/ssl/logstash.key
+
+- name: Configure logstash
+  copy:
+    src: logstash.yml
+    dest: /etc/logstash/logstash.yml
+  notify: Restart logstash
+
+- name: Configure logstash logger
+  copy:
+    src: syslogger.conf
+    dest: /etc/logstash/conf.d/syslogger.conf
+  notify: Restart logstash
+
+- name: Enable logstash
+  service:
+    name: logstash
+    enabled: true
+
+- name: Install heartbeat
+  package:
+    name: heartbeat-elastic
+    state: present
+
+- name: Configure heartbeat
+  copy:
+    src: heartbeat.yml
+    dest: /etc/heartbeat/heartbeat.yml
+  notify:
+    - restart heartbeat
+
+- name: Enable heartbeat
+  service:
+    name: heartbeat-elastic
+    state: started
+    enabled: true
+
+- name: Add firewall rules for logstash beats
+  firewalld:
+    zone: public
+    port: "{{ item }}"
+    permanent: yes
+    state: enabled
+  with_items:
+    - 5044/tcp
+    - 5044/udp
+  notify: Restart firewalld
+  when: ansible_distribution == 'CentOS'
+
+- name: Add firewall rules
+  firewalld:
+    zone: public
+    service: "{{ item }}"
+    permanent: yes
+    state: enabled
+  with_items:
+    - https
+    - http
+  notify: Restart firewalld
+  when: ansible_distribution == 'CentOS'
+
+# - name: Add index cleanup cron job for elasticsearch
+#   cron:
+#     name: "Clean {{ item.index }} Index"
+#     special_time: "{{ item.when }}"
+#     job: "curl -X DELETE 'localhost:9200/{{ item.index }}?pretty'"
+#   with_items:
+#     - { index: syslog-logger, when: monthly }
+#     - { index: metricbeat-*, when: weekly }
+#
+# - name: Add rsyslog cleanup cron job
+#   cron:
+#     name: "Clean Rsyslog logs"
+#     special_time: daily
+#     job: "for i in $(ls /var/log/remotehosts/); do cd /var/log/remotehosts/$i; pwd; rm $(date -d \"$date -60 days\" +\"%Y-%m-%d\");done"
